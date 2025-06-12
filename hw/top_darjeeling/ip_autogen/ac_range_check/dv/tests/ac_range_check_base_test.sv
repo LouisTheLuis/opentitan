@@ -33,9 +33,9 @@ function void ac_range_check_base_test::build_phase(uvm_phase phase);
 
   // Disable some scoreboard checks for the CSR tests (unfortunately we cannot simply avoid the
   // scoreboard to be created by setting this config flag, which should be the case)
-  void'($value$plusargs("UVM_TEST_SEQ=%0s", test_seq_s));
-  $display("test_seq_s = %s", test_seq_s);
-  if (test_seq_s == "ac_range_check_common_vseq") begin
-    cfg.en_scb = 0;
-  end
+  //void'($value$plusargs("UVM_TEST_SEQ=%0s", test_seq_s));
+  //$display("test_seq_s = %s", test_seq_s);
+  //if (test_seq_s == "ac_range_check_common_vseq") begin
+  //  cfg.en_scb = 0;
+  //end
 endfunction : build_phase
