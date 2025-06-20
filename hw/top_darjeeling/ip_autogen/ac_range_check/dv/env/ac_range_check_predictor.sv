@@ -188,7 +188,8 @@ function access_decision_e ac_range_check_predictor::check_access(tl_seq_item it
 
   // Clear log status register if the log_clear regfield is set
   if (`gmv(env_cfg.ral.log_config.log_clear)) begin 
-    void'(env_cfg.log_status.predict(.value(32'b0), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
+    void'(env_cfg.ral.log_status.predict
+          (.value(32'b0), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
   end
 
   if (env_cfg.en_cov && !bypass_sampled) begin
@@ -342,7 +343,9 @@ function cip_tl_seq_item ac_range_check_predictor::predict_tl_unfilt_d_chan();
   return tmp_exp;
 endfunction : predict_tl_unfilt_d_chan
 
-
+// Update the RAL registers for the logging CSRs upon a DENIED request,
+// keeping track of the deny count. It also raises the intr_state field
+// once the deny count passes the threshold
 function void ac_range_check_predictor::update_log(tl_seq_item item, int index, bit no_match);
   tlul_pkg::tl_a_user_t a_user;
   bit [3:0] racl_role;
@@ -352,6 +355,13 @@ function void ac_range_check_predictor::update_log(tl_seq_item item, int index, 
       execute_access,
       write_access,
       read_access; 
+  
+  // Extract CSRs
+  ac_range_check_reg_log_config   log_config_csr  = env_cfg.ral.log_config;
+  ac_range_check_reg_log_status   log_status_csr  = env_cfg.ral.log_status;
+  ac_range_check_reg_log_address  log_address_csr = env_cfg.ral.log_address;
+  ac_range_check_reg_intr_state   intr_state_csr  = env_cfg.ral.intr_state;
+
   racl_role       = top_racl_pkg::tlul_extract_racl_role_bits(a_user.rsvd);
   ctn_uid         = top_racl_pkg::tlul_extract_ctn_uid_bits(a_user.rsvd);
   racl_write      = item.is_write();
@@ -359,44 +369,38 @@ function void ac_range_check_predictor::update_log(tl_seq_item item, int index, 
   write_access    = item.is_write();
   execute_access  = !write_access & item.a_user[InstrTypeMsbPos:InstrTypeLsbPos] == MuBi4True;
   read_access     = !write_access & !execute_access;
-
-  // Extract CSRs
-  ac_range_check_reg_log_config   log_config  = env_cfg.ral.log_config;
-  ac_range_check_reg_log_status   log_status  = env_cfg.ral.log_status;
-  ac_range_check_reg_log_address  log_address = env_cfg.ral.log_address;
-  ac_range_check_reg_intr_state   intr_state  = env_cfg.ral_intr_state;
     
-  if (`gmv(log_config.log_enable)) begin 
-    if (`gmv(log_status.deny_cnt) == 0) begin
+  if (`gmv(log_config_csr.log_enable)) begin 
+    if (`gmv(log_status_csr.deny_cnt) == 0) begin
       deny_cnt++; 
-      void'(log_status.deny_range_index.predict
+      void'(log_status_csr.deny_range_index.predict
           (.value(index), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
-      void'(log_status.denied_cnt_uid.predict
+      void'(log_status_csr.denied_cnt_uid.predict
           (.value(ctn_uid), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
-      void'(log_status.denied_source_role.predict
+      void'(log_status_csr.denied_source_role.predict
           (.value(racl_role), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
-      void'(log_status.denied_racl_write.predict
+      void'(log_status_csr.denied_racl_write.predict
           (.value(racl_write), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
-      void'(log_status.denied_racl_read.predict
+      void'(log_status_csr.denied_racl_read.predict
           (.value(racl_read), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
-      void'(log_status.denied_no_match.predict
+      void'(log_status_csr.denied_no_match.predict
           (.value(no_match), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
-      void'(log_status.denied_execute_access.predict
+      void'(log_status_csr.denied_execute_access.predict
           (.value(execute_access), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
-      void'(log_status.denied_write_access.predict
+      void'(log_status_csr.denied_write_access.predict
           (.value(write_access), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
-      void'(log_status.denied_read_access.predict
+      void'(log_status_csr.denied_read_access.predict
           (.value(read_access), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
-      void'(log_status.deny_cnt.predict
+      void'(log_status_csr.deny_cnt.predict
           (.value(deny_cnt), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
     end else begin
       deny_cnt++;
-      void'(log_status.deny_cnt.predict
+      void'(log_status_csr.deny_cnt.predict
           (.value(deny_cnt), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
     end
 
-    if (deny_cnt >= `gmv(log_config.deny_cnt_threshold)) begin 
-      void'(intr_state.deny_cnt_reached.predict
+    if (deny_cnt >= `gmv(log_config_csr.deny_cnt_threshold)) begin 
+      void'(intr_state_csr.deny_cnt_reached.predict
           (.value(1), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
     end
   end  
