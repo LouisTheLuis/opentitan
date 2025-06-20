@@ -23,6 +23,7 @@ class ac_range_check_predictor extends uvm_component;
   int all_unfilt_a_chan_cnt;          // Total number of received transactions on unfilt A channel
   int exp_unfilt_d_chan_cnt;
   int exp_filt_a_chan_cnt;
+  int deny_cnt;
 
   // Local queues
   access_decision_e tr_access_decision_q[$];  // Access decision for each incoming transaction
@@ -47,6 +48,7 @@ class ac_range_check_predictor extends uvm_component;
   extern function void reset(string kind = "HARD");
   extern function access_decision_e check_access(tl_seq_item item);
   extern function cip_tl_seq_item predict_tl_unfilt_d_chan();
+  extern function void update_log(tl_seq_item item, int index, bit no_match);
 endclass : ac_range_check_predictor
 
 
@@ -184,6 +186,11 @@ function access_decision_e ac_range_check_predictor::check_access(tl_seq_item it
   // Check if bypass is enabled
   bypass_enable = env_cfg.misc_vif.get_range_check_overwrite();
 
+  // Clear log status register if the log_clear regfield is set
+  if (`gmv(env_cfg.ral.log_config.log_clear)) begin 
+    void'(env_cfg.log_status.predict(.value(32'b0), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
+  end
+
   if (env_cfg.en_cov && !bypass_sampled) begin
     // bypass_sampled is set so that we only need to sample coverage once per test and not per
     // transaction
@@ -194,7 +201,6 @@ function access_decision_e ac_range_check_predictor::check_access(tl_seq_item it
   if (bypass_enable) begin
     return AccessGranted;
   end
-
 
   // Due to the note above, we should keep this loop starting from index 0
   for (int i = 0; i < NUM_RANGES; i++) begin
@@ -267,7 +273,7 @@ function access_decision_e ac_range_check_predictor::check_access(tl_seq_item it
                            .execute_perm(dut_cfg.range_attr[i].execute_access),
                            .acc_permit(0));
       end
-
+      update_log(item, i, 0);
       return AccessDenied;
     end
 
@@ -276,6 +282,7 @@ function access_decision_e ac_range_check_predictor::check_access(tl_seq_item it
                 access_type.name(), item.a_addr, i), UVM_MEDIUM)
       if (env_cfg.en_cov) cov.sample_racl_cg(.idx(i), .access_type(access_type),
                                              .role(racl_role), .racl_check(0));
+      update_log(item, i, 0);
       return AccessDenied;
     end
 
@@ -302,6 +309,7 @@ function access_decision_e ac_range_check_predictor::check_access(tl_seq_item it
   if (env_cfg.en_cov) begin
     cov.sample_all_index_miss_cg();
   end
+  update_log(item, 0, 1);
   return AccessDenied;
 endfunction : check_access
 
@@ -334,12 +342,73 @@ function cip_tl_seq_item ac_range_check_predictor::predict_tl_unfilt_d_chan();
   return tmp_exp;
 endfunction : predict_tl_unfilt_d_chan
 
+
+function void ac_range_check_predictor::update_log(tl_seq_item item, int index, bit no_match);
+  tlul_pkg::tl_a_user_t a_user;
+  bit [3:0] racl_role;
+  bit [4:0] ctn_uid;
+  bit racl_write,
+      racl_read,
+      execute_access,
+      write_access,
+      read_access; 
+  racl_role       = top_racl_pkg::tlul_extract_racl_role_bits(a_user.rsvd);
+  ctn_uid         = top_racl_pkg::tlul_extract_ctn_uid_bits(a_user.rsvd);
+  racl_write      = item.is_write();
+  racl_read       = !racl_write;
+  write_access    = item.is_write();
+  execute_access  = !write_access & item.a_user[InstrTypeMsbPos:InstrTypeLsbPos] == MuBi4True;
+  read_access     = !write_access & !execute_access;
+
+  // Extract CSRs
+  ac_range_check_reg_log_config   log_config  = env_cfg.ral.log_config;
+  ac_range_check_reg_log_status   log_status  = env_cfg.ral.log_status;
+  ac_range_check_reg_log_address  log_address = env_cfg.ral.log_address;
+  ac_range_check_reg_intr_state   intr_state  = env_cfg.ral_intr_state;
+    
+  if (`gmv(log_config.log_enable)) begin 
+    if (`gmv(log_status.deny_cnt) == 0) begin
+      deny_cnt++; 
+      void'(log_status.deny_range_index.predict
+          (.value(index), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
+      void'(log_status.denied_cnt_uid.predict
+          (.value(ctn_uid), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
+      void'(log_status.denied_source_role.predict
+          (.value(racl_role), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
+      void'(log_status.denied_racl_write.predict
+          (.value(racl_write), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
+      void'(log_status.denied_racl_read.predict
+          (.value(racl_read), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
+      void'(log_status.denied_no_match.predict
+          (.value(no_match), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
+      void'(log_status.denied_execute_access.predict
+          (.value(execute_access), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
+      void'(log_status.denied_write_access.predict
+          (.value(write_access), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
+      void'(log_status.denied_read_access.predict
+          (.value(read_access), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
+      void'(log_status.deny_cnt.predict
+          (.value(deny_cnt), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
+    end else begin
+      deny_cnt++;
+      void'(log_status.deny_cnt.predict
+          (.value(deny_cnt), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
+    end
+
+    if (deny_cnt >= `gmv(log_config.deny_cnt_threshold)) begin 
+      void'(intr_state.deny_cnt_reached.predict
+          (.value(1), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
+    end
+  end  
+endfunction : update_log
+
 function void ac_range_check_predictor::reset(string kind = "HARD");
   tl_unfilt_a_chan_fifo.flush();
   tl_filt_d_chan_fifo.flush();
   all_unfilt_a_chan_cnt = 0;
   exp_unfilt_d_chan_cnt = 0;
   exp_filt_a_chan_cnt   = 0;
+  deny_cnt              = 0;
   latest_filtered_item  = null;
 endfunction : reset
 
