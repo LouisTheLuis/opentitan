@@ -366,7 +366,7 @@ function void ac_range_check_predictor::update_log(tl_seq_item item, int index, 
   ac_range_check_reg_log_config   log_config  = env_cfg.ral.log_config;
   ac_range_check_reg_log_status   log_status  = env_cfg.ral.log_status;
   ac_range_check_reg_log_address  log_address = env_cfg.ral.log_address;
-  ac_range_check_reg_intr_state   intr_state  = env_cfg.ral_intr_state;
+  ac_range_check_reg_intr_state   intr_state  = env_cfg.ral.intr_state;
     
   if (`gmv(log_config.log_enable)) begin 
     if (`gmv(log_status.deny_cnt) == 0) begin
