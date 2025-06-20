@@ -375,7 +375,7 @@ function void ac_range_check_predictor::update_log(tl_seq_item item, int index, 
       deny_cnt++; 
       void'(log_status_csr.deny_range_index.predict
           (.value(index), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
-      void'(log_status_csr.denied_cnt_uid.predict
+      void'(log_status_csr.denied_ctn_uid.predict
           (.value(ctn_uid), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
       void'(log_status_csr.denied_source_role.predict
           (.value(racl_role), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
