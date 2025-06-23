@@ -375,7 +375,6 @@ function void ac_range_check_predictor::update_log(tl_seq_item item, int index, 
   if (`gmv(log_config_csr.log_enable)) begin 
     if (`gmv(log_status_csr.deny_cnt) == 0) begin
       deny_cnt++;
-      `uvm_info(`gfn, $sformatf("FIRST LOG BEING PERFORMED. Current deny_cnt = 0"), UVM_MEDIUM)
       `uvm_info(`gfn, $sformatf({"First deny log information:\n",
               " - deny_range_index: %0d\n",
               " - denied_ctn_uid: %0b\n",
