@@ -21,6 +21,7 @@ class ac_range_check_smoke_vseq extends ac_range_check_base_vseq;
   // Standard SV/UVM methods
   extern function new(string name="");
   extern task body();
+  extern task set_logging();
 endclass : ac_range_check_smoke_vseq
 
 
@@ -102,6 +103,7 @@ function ac_range_check_smoke_vseq::new(string name="");
 endfunction : new
 
 task ac_range_check_smoke_vseq::body();
+  set_logging();
   for (int i=1; i<=num_trans; i++) begin
     `uvm_info(`gfn, $sformatf("Starting seq %0d/%0d", i, num_trans), UVM_LOW)
 
@@ -122,3 +124,14 @@ task ac_range_check_smoke_vseq::body();
     $display("\n");
   end
 endtask : body
+
+task ac_range_check_smoke_vseq::set_logging();
+  // We enable logging and the deny threshold
+  `uvm_info(`gfn, $sformatf("Enabling the logging"), UVM_MEDIUM)
+  ral.log_config.log_enable.set(1);
+  ral.log_config.deny_cnt_threshold.set(10);
+  csr_update(.csr(ral.log_config));
+
+  // Do more stuff, but for now, let's just leave it like this because the
+  // main focus is that we want to see the logging enabled
+endtask : set_logging

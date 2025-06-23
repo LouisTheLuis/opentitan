@@ -189,7 +189,7 @@ function access_decision_e ac_range_check_predictor::check_access(tl_seq_item it
   // Clear log status register if the log_clear regfield is set
   if (`gmv(env_cfg.ral.log_config.log_clear)) begin 
     void'(env_cfg.ral.log_status.predict
-          (.value(32'b0), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
+          (.value(32'b0), .kind(UVM_PREDICT_DIRECT)));
   end
 
   if (env_cfg.en_cov && !bypass_sampled) begin
@@ -355,6 +355,7 @@ function void ac_range_check_predictor::update_log(tl_seq_item item, int index, 
       execute_access,
       write_access,
       read_access; 
+  bit [31:0] log_address;
   
   // Extract CSRs
   ac_range_check_reg_log_config   log_config_csr  = env_cfg.ral.log_config;
@@ -369,39 +370,80 @@ function void ac_range_check_predictor::update_log(tl_seq_item item, int index, 
   write_access    = item.is_write();
   execute_access  = !write_access & item.a_user[InstrTypeMsbPos:InstrTypeLsbPos] == MuBi4True;
   read_access     = !write_access & !execute_access;
-    
+  log_address     = item.a_addr;
+
   if (`gmv(log_config_csr.log_enable)) begin 
     if (`gmv(log_status_csr.deny_cnt) == 0) begin
-      deny_cnt++; 
-      void'(log_status_csr.deny_range_index.predict
-          (.value(index), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
-      void'(log_status_csr.denied_ctn_uid.predict
-          (.value(ctn_uid), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
-      void'(log_status_csr.denied_source_role.predict
-          (.value(racl_role), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
-      void'(log_status_csr.denied_racl_write.predict
-          (.value(racl_write), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
-      void'(log_status_csr.denied_racl_read.predict
-          (.value(racl_read), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
-      void'(log_status_csr.denied_no_match.predict
-          (.value(no_match), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
-      void'(log_status_csr.denied_execute_access.predict
-          (.value(execute_access), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
-      void'(log_status_csr.denied_write_access.predict
-          (.value(write_access), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
-      void'(log_status_csr.denied_read_access.predict
-          (.value(read_access), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
-      void'(log_status_csr.deny_cnt.predict
-          (.value(deny_cnt), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
+      deny_cnt++;
+      `uvm_info(`gfn, $sformatf({"First deny log information:\n",
+              " - deny_range_index: %0d\n",
+              " - denied_ctn_uid: %0b\n",
+              " - denied_source_role: %0b\n",
+              " - denied_racl_write: %0b\n",
+              " - denied_racl_read: %0b\n",
+              " - denied_no_match: %0b\n",
+              " - denied_execute_access: %0b\n",
+              " - denied_write_access: %0b\n",
+              " - denied_read_access: %0b\n",
+              " - deny_cnt: %0d\n",
+              " - log_address: %0x\n"}, index, ctn_uid, racl_role,
+              racl_write, racl_read, no_match, execute_access, write_access,
+              read_access, deny_cnt, log_address), UVM_MEDIUM)
+      void'(env_cfg.ral.log_status.deny_range_index.predict
+          (.value(index), .kind(UVM_PREDICT_DIRECT)));
+      void'(env_cfg.ral.log_status.denied_ctn_uid.predict
+          (.value(ctn_uid), .kind(UVM_PREDICT_DIRECT)));
+      void'(env_cfg.ral.log_status.denied_source_role.predict
+          (.value(racl_role), .kind(UVM_PREDICT_DIRECT)));
+      void'(env_cfg.ral.log_status.denied_racl_write.predict
+          (.value(racl_write), .kind(UVM_PREDICT_DIRECT)));
+      void'(env_cfg.ral.log_status.denied_racl_read.predict
+          (.value(racl_read), .kind(UVM_PREDICT_DIRECT)));
+      void'(env_cfg.ral.log_status.denied_no_match.predict
+          (.value(no_match), .kind(UVM_PREDICT_DIRECT)));
+      void'(env_cfg.ral.log_status.denied_execute_access.predict
+          (.value(execute_access), .kind(UVM_PREDICT_DIRECT)));
+      void'(env_cfg.ral.log_status.denied_write_access.predict
+          (.value(write_access), .kind(UVM_PREDICT_DIRECT)));
+      void'(env_cfg.ral.log_status.denied_read_access.predict
+          (.value(read_access), .kind(UVM_PREDICT_DIRECT)));
+      void'(env_cfg.ral.log_status.deny_cnt.predict
+          (.value(deny_cnt), .kind(UVM_PREDICT_DIRECT)));
+      void'(env_cfg.ral.log_address.predict
+          (.value(log_address), .kind(UVM_PREDICT_DIRECT)));
+      `uvm_info(`gfn, $sformatf({"First deny log information in RAL:\n",
+              " - deny_range_index: %0d\n",
+              " - denied_ctn_uid: %0b\n",
+              " - denied_source_role: %0b\n",
+              " - denied_racl_write: %0b\n",
+              " - denied_racl_read: %0b\n",
+              " - denied_no_match: %0b\n",
+              " - denied_execute_access: %0b\n",
+              " - denied_write_access: %0b\n",
+              " - denied_read_access: %0b\n",
+              " - deny_cnt: %0d\n",
+              " - log_address: %0x\n"}, 
+              `gmv(log_status_csr.deny_range_index), 
+              `gmv(log_status_csr.denied_ctn_uid), 
+              `gmv(log_status_csr.denied_source_role),
+              `gmv(log_status_csr.denied_racl_write), 
+              `gmv(log_status_csr.denied_racl_read), 
+              `gmv(log_status_csr.denied_no_match), 
+              `gmv(log_status_csr.denied_execute_access), 
+              `gmv(log_status_csr.denied_write_access),
+              `gmv(log_status_csr.denied_read_access), 
+              `gmv(log_status_csr.deny_cnt), 
+              `gmv(log_address_csr)),
+              UVM_MEDIUM)
     end else begin
       deny_cnt++;
-      void'(log_status_csr.deny_cnt.predict
-          (.value(deny_cnt), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
+      void'(env_cfg.ral.log_status.deny_cnt.predict
+          (.value(deny_cnt), .kind(UVM_PREDICT_DIRECT)));
     end
 
     if (deny_cnt >= `gmv(log_config_csr.deny_cnt_threshold)) begin 
-      void'(intr_state_csr.deny_cnt_reached.predict
-          (.value(1), .kind(UVM_PREDICT_WRITE), .be(item.a_mask)));
+      void'(env_cfg.ral.intr_state.deny_cnt_reached.predict
+          (.value(1), .kind(UVM_PREDICT_DIRECT)));
     end
   end  
 endfunction : update_log
