@@ -8,6 +8,11 @@ class ac_range_check_smoke_vseq extends ac_range_check_base_vseq;
   // Local variables
   rand bit zero_delays;
   rand protected bit [NUM_RANGES-1:0] config_range_mask;  // Which ranges should be constrained
+  // Random delay in **clock cycles** before a log_clear is asserted
+  rand int unsigned log_clear_delay_clks;
+  rand bit log_enable;
+  rand bit log_clear;
+  rand bit [7:0] deny_cnt_threshold;
 
   // Constraints
   extern constraint num_trans_c;
@@ -17,6 +22,10 @@ class ac_range_check_smoke_vseq extends ac_range_check_base_vseq;
   extern constraint range_racl_policy_c;
   extern constraint tl_main_vars_addr_c;
   extern constraint tl_main_vars_mask_c;
+  extern constraint log_clear_delay_clks_c;
+  extern constraint log_enable_c;
+  extern constraint log_clear_c;
+  extern constraint deny_cnt_threshold_c;
 
   // Standard SV/UVM methods
   extern function new(string name="");
@@ -125,13 +134,56 @@ task ac_range_check_smoke_vseq::body();
   end
 endtask : body
 
-task ac_range_check_smoke_vseq::set_logging();
-  // We enable logging and the deny threshold
-  `uvm_info(`gfn, $sformatf("Enabling the logging"), UVM_MEDIUM)
-  ral.log_config.log_enable.set(1);
-  ral.log_config.deny_cnt_threshold.set(10);
-  csr_update(.csr(ral.log_config));
+//====================================
+//       LOGGING SEQUENCING
+//====================================
+// Setting up a delay before doing a log_clear = 1 (or not!)
+constraint ac_range_check_smoke_vseq::log_clear_delay_clks_c {
+  log_clear_delay_clks inside {[0:100]};
+}
 
-  // Do more stuff, but for now, let's just leave it like this because the
-  // main focus is that we want to see the logging enabled
+constraint ac_range_check_smoke_vseq::log_clear_c {
+  log_clear dist {
+    0 :/ 8,
+    1 :/ 2
+  } 
+}
+
+constraint ac_range_check_smoke_vseq::log_enable_c {
+  log_enable dist {
+    0 :/ 3,
+    1 :/ 7
+  }
+}
+
+constraint ac_range_check_smoke_vseq::deny_cnt_threshold_c {
+  deny_cnt_threshold inside {[8'd0:8'd100]};
+}
+
+task ac_range_check_smoke_vseq::set_logging();
+  bit clear_done = 0;
+
+  fork 
+    begin : traffic_thread 
+      ral.log_config.log_enable.set(log_enable);
+      ral.log_config.deny_cnt_threshold.set(deny_cnt_threshold);
+      csr_update(.csr(ral.log_config));
+      while (!clear_done) begin 
+        `DV_CHECK_RANDOMIZE_FATAL(this)
+        send_single_tl_unfilt_tr(0);
+      end
+    end
+
+    begin : clear_thread
+      cfg.clk_rst_vif.wait_clks(log_clear_delay_clks);
+      ral.log_config.log_clear.set(log_clear);
+      csr_update(.csr(ral.log_config);
+      clear_done = 1;
+    end 
+  join
+
+  uvm_reg_data_t act_status, act_config, act_addr;
+  csr_rd(.ptr(ral.log_status), .value(act_status));
+  csr_rd(.ptr(ral.log_config), .value(act_config));
+  csr_rd(.ptr(ral.log_address), .value(act_addr));
 endtask : set_logging
