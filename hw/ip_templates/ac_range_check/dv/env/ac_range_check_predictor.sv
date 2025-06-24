@@ -48,7 +48,8 @@ class ac_range_check_predictor extends uvm_component;
   extern function void reset(string kind = "HARD");
   extern function access_decision_e check_access(tl_seq_item item);
   extern function cip_tl_seq_item predict_tl_unfilt_d_chan();
-  extern function void update_log(tl_seq_item item, int index, bit no_match);
+  extern function void update_log(tl_seq_item item, int index, bit no_match,
+                                        access_type_e access_type, bit attr_perm, bit racl_perm);
 endclass : ac_range_check_predictor
 
 
@@ -187,7 +188,33 @@ function access_decision_e ac_range_check_predictor::check_access(tl_seq_item it
   bypass_enable = env_cfg.misc_vif.get_range_check_overwrite();
 
   // Clear log status register if the log_clear regfield is set
-  if (`gmv(env_cfg.ral.log_config.log_clear)) begin 
+  if (`gmv(env_cfg.ral.log_config.log_clear)) begin
+    `uvm_info(`gfn, $sformatf("Clear performed to log_status and log_address"), UVM_MEDIUM)
+    `uvm_info(`gfn, $sformatf({"Cleared info in RAL:\n",
+            " - deny_range_index: %0d\n",
+            " - denied_ctn_uid: %0b\n",
+            " - denied_source_role: %0b\n",
+            " - denied_racl_write: %0b\n",
+            " - denied_racl_read: %0b\n",
+            " - denied_no_match: %0b\n",
+            " - denied_execute_access: %0b\n",
+            " - denied_write_access: %0b\n",
+            " - denied_read_access: %0b\n",
+            " - deny_cnt: %0d\n",
+            " - log_address: %0x\n"}, 
+            `gmv(env_cfg.ral.log_status.deny_range_index), 
+            `gmv(env_cfg.ral.log_status.denied_ctn_uid), 
+            `gmv(env_cfg.ral.log_status.denied_source_role),
+            `gmv(env_cfg.ral.log_status.denied_racl_write), 
+            `gmv(env_cfg.ral.log_status.denied_racl_read), 
+            `gmv(env_cfg.ral.log_status.denied_no_match), 
+            `gmv(env_cfg.ral.log_status.denied_execute_access), 
+            `gmv(env_cfg.ral.log_status.denied_write_access),
+            `gmv(env_cfg.ral.log_status.denied_read_access), 
+            `gmv(env_cfg.ral.log_status.deny_cnt), 
+            `gmv(env_cfg.ral.log_address)),
+            UVM_MEDIUM)
+    deny_cnt = 0; 
     void'(env_cfg.ral.log_status.predict
           (.value(32'b0), .kind(UVM_PREDICT_DIRECT)));
   end
@@ -274,7 +301,7 @@ function access_decision_e ac_range_check_predictor::check_access(tl_seq_item it
                            .execute_perm(dut_cfg.range_attr[i].execute_access),
                            .acc_permit(0));
       end
-      update_log(item, i, 0);
+      update_log(item, i, 0, access_type, attr_ok, racl_ok);
       return AccessDenied;
     end
 
@@ -283,7 +310,7 @@ function access_decision_e ac_range_check_predictor::check_access(tl_seq_item it
                 access_type.name(), item.a_addr, i), UVM_MEDIUM)
       if (env_cfg.en_cov) cov.sample_racl_cg(.idx(i), .access_type(access_type),
                                              .role(racl_role), .racl_check(0));
-      update_log(item, i, 0);
+      update_log(item, i, 0, access_type, attr_ok, racl_ok);
       return AccessDenied;
     end
 
@@ -310,7 +337,7 @@ function access_decision_e ac_range_check_predictor::check_access(tl_seq_item it
   if (env_cfg.en_cov) begin
     cov.sample_all_index_miss_cg();
   end
-  update_log(item, 0, 1);
+  update_log(item, 0, 1, access_type, attr_ok, racl_ok);
   return AccessDenied;
 endfunction : check_access
 
@@ -346,7 +373,8 @@ endfunction : predict_tl_unfilt_d_chan
 // Update the RAL registers for the logging CSRs upon a DENIED request,
 // keeping track of the deny count. It also raises the intr_state field
 // once the deny count passes the threshold
-function void ac_range_check_predictor::update_log(tl_seq_item item, int index, bit no_match);
+function void ac_range_check_predictor::update_log(tl_seq_item item, int index, bit no_match,
+                                        access_type_e access_type, bit attr_perm, bit racl_perm);
   tlul_pkg::tl_a_user_t a_user;
   bit [3:0] racl_role;
   bit [4:0] ctn_uid;
@@ -356,21 +384,22 @@ function void ac_range_check_predictor::update_log(tl_seq_item item, int index, 
       write_access,
       read_access; 
   bit [31:0] log_address;
-  
+
   // Extract CSRs
   ac_range_check_reg_log_config   log_config_csr  = env_cfg.ral.log_config;
   ac_range_check_reg_log_status   log_status_csr  = env_cfg.ral.log_status;
   ac_range_check_reg_log_address  log_address_csr = env_cfg.ral.log_address;
   ac_range_check_reg_intr_state   intr_state_csr  = env_cfg.ral.intr_state;
 
+  a_user          = item.a_user;
   racl_role       = top_racl_pkg::tlul_extract_racl_role_bits(a_user.rsvd);
   ctn_uid         = top_racl_pkg::tlul_extract_ctn_uid_bits(a_user.rsvd);
-  racl_write      = item.is_write();
-  racl_read       = !racl_write;
-  write_access    = item.is_write();
-  execute_access  = !write_access & item.a_user[InstrTypeMsbPos:InstrTypeLsbPos] == MuBi4True;
-  read_access     = !write_access & !execute_access;
+  write_access    = (access_type == ac_range_check_env_pkg::Write);
+  execute_access  = (access_type == ac_range_check_env_pkg::Execute);
+  read_access     = (access_type == ac_range_check_env_pkg::Read);
   log_address     = item.a_addr;
+  racl_write      = write_access & !racl_perm;
+  racl_read       = !write_access & !racl_perm;
 
   if (`gmv(log_config_csr.log_enable)) begin 
     if (`gmv(log_status_csr.deny_cnt) == 0) begin
