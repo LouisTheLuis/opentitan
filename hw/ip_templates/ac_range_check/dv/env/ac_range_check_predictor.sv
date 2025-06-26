@@ -24,7 +24,6 @@ class ac_range_check_predictor extends uvm_component;
   int exp_unfilt_d_chan_cnt;
   int exp_filt_a_chan_cnt;
   int deny_cnt;
-  bit log_clear_flag;
 
   // Local queues
   access_decision_e tr_access_decision_q[$];  // Access decision for each incoming transaction
@@ -189,7 +188,7 @@ function access_decision_e ac_range_check_predictor::check_access(tl_seq_item it
   bypass_enable = env_cfg.misc_vif.get_range_check_overwrite();
 
   // Clear log status register if the log_clear regfield is set
-  if (`gmv(env_cfg.ral.log_config.log_clear) & !log_clear_flag) begin
+  if (`gmv(env_cfg.ral.log_config.log_clear)) begin
     `uvm_info(`gfn, $sformatf("Clear performed to log_status and log_address"), UVM_MEDIUM)
     `uvm_info(`gfn, $sformatf({"Cleared info in RAL:\n",
             " - deny_range_index: %0d\n",
@@ -218,10 +217,9 @@ function access_decision_e ac_range_check_predictor::check_access(tl_seq_item it
     deny_cnt = 0; 
     void'(env_cfg.ral.log_status.predict
           (.value(32'b0), .kind(UVM_PREDICT_DIRECT)));
-    log_clear_flag = 1;
-  end else begin 
-    log_clear_flag = `gmv(env_cfg.ral.log_config.log_clear);
-  end
+    void'(env_cfg.ral.log_address.predict
+          (.value(32'b0), .kind(UVM_PREDICT_DIRECT)));
+  end  
 
   if (env_cfg.en_cov && !bypass_sampled) begin
     // bypass_sampled is set so that we only need to sample coverage once per test and not per
@@ -471,7 +469,6 @@ function void ac_range_check_predictor::reset(string kind = "HARD");
   exp_unfilt_d_chan_cnt = 0;
   exp_filt_a_chan_cnt   = 0;
   deny_cnt              = 0;
-  log_clear_flag        = 0;
   latest_filtered_item  = null;
 endfunction : reset
 

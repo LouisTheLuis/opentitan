@@ -9,7 +9,6 @@ class ac_range_check_smoke_vseq extends ac_range_check_base_vseq;
   rand bit zero_delays;
   rand protected bit [NUM_RANGES-1:0] config_range_mask;  // Which ranges should be constrained
   rand bit log_enable;
-  rand bit log_clear;
   rand bit [7:0] deny_cnt_threshold;
 
   // Constraints
@@ -21,7 +20,6 @@ class ac_range_check_smoke_vseq extends ac_range_check_base_vseq;
   extern constraint tl_main_vars_addr_c;
   extern constraint tl_main_vars_mask_c;
   extern constraint log_enable_c;
-  extern constraint log_clear_c;
   extern constraint deny_cnt_threshold_c;
 
   // Control flags
@@ -125,9 +123,6 @@ task ac_range_check_smoke_vseq::body();
       1: begin
         `DV_CHECK_RANDOMIZE_FATAL(this)
         ac_range_check_init();
-        // Update log_clear 25% of the time
-        ral.log_config.log_clear.set(log_clear);
-        csr_update(.csr(ral.log_config));
       end
       // 75% of the time, keep the same config
       3: begin
@@ -135,8 +130,23 @@ task ac_range_check_smoke_vseq::body();
       end
     endcase
 
+    randcase 
+      // Trigger log_clear 10% of the time
+      1: begin 
+        ral.log_config.log_clear.set(1);
+        csr_update(.csr(ral.log_config));
+      end
+
+      // Other times, leave the configuration as is
+      9: begin 
+        `uvm_info(`gfn, $sformatf("Do not trigger a log_clear for seq #%0d", i), UVM_MEDIUM)
+      end
+    endcase
+
     send_single_tl_unfilt_tr(zero_delays);  // Send a single TLUL seq with random zero delays
     $display("\n");
+    ral.log_config.log_clear.set(0);
+    csr_update(.csr(ral.log_config));
     check_logging();
   end
 endtask : body
@@ -144,13 +154,6 @@ endtask : body
 //====================================
 //       LOGGING SEQUENCING
 //====================================
-constraint ac_range_check_smoke_vseq::log_clear_c {
-  log_clear dist {
-    0 :/ 8,
-    1 :/ 2
-  }; 
-}
-
 constraint ac_range_check_smoke_vseq::log_enable_c {
   if (apply_log_enable_c) 
     log_enable dist {
