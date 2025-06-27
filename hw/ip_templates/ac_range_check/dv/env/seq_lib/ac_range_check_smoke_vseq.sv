@@ -8,6 +8,8 @@ class ac_range_check_smoke_vseq extends ac_range_check_base_vseq;
   // Local variables
   rand bit zero_delays;
   rand protected bit [NUM_RANGES-1:0] config_range_mask;  // Which ranges should be constrained
+  rand bit log_enable;
+  rand bit [7:0] deny_cnt_threshold;
 
   // Constraints
   extern constraint num_trans_c;
@@ -17,10 +19,18 @@ class ac_range_check_smoke_vseq extends ac_range_check_base_vseq;
   extern constraint range_racl_policy_c;
   extern constraint tl_main_vars_addr_c;
   extern constraint tl_main_vars_mask_c;
+  extern constraint log_enable_c;
+  extern constraint deny_cnt_threshold_c;
 
+  // Control flags
+  bit apply_log_enable_c;
+  bit apply_deny_cnt_threshold_c;
+  
   // Standard SV/UVM methods
   extern function new(string name="");
   extern task body();
+  extern task set_logging();
+  extern task check_logging();
 endclass : ac_range_check_smoke_vseq
 
 
@@ -102,9 +112,10 @@ function ac_range_check_smoke_vseq::new(string name="");
 endfunction : new
 
 task ac_range_check_smoke_vseq::body();
+  set_logging();
   for (int i=1; i<=num_trans; i++) begin
     `uvm_info(`gfn, $sformatf("Starting seq %0d/%0d", i, num_trans), UVM_LOW)
-
+    
     // Randomly keep the same configuration to allow transactions back to back transactions, as no
     // configuration change will happen in between
     randcase
@@ -118,7 +129,66 @@ task ac_range_check_smoke_vseq::body();
         `uvm_info(`gfn, $sformatf("Keep the same configuration for seq #%0d", i), UVM_MEDIUM)
       end
     endcase
+
+    randcase 
+      // Trigger log_clear 10% of the time
+      1: begin 
+        ral.log_config.log_clear.set(1);
+        csr_update(.csr(ral.log_config));
+      end
+
+      // Other times, leave the configuration as is
+      9: begin 
+        `uvm_info(`gfn, $sformatf("Do not trigger a log_clear for seq #%0d", i), UVM_MEDIUM)
+      end
+    endcase
+
     send_single_tl_unfilt_tr(zero_delays);  // Send a single TLUL seq with random zero delays
     $display("\n");
+    ral.log_config.log_clear.set(0);
+    csr_update(.csr(ral.log_config));
+    check_logging();
   end
 endtask : body
+
+//====================================
+//       LOGGING SEQUENCING
+//====================================
+constraint ac_range_check_smoke_vseq::log_enable_c {
+  if (apply_log_enable_c) 
+    log_enable dist {
+      0 :/ 3,
+      1 :/ 7
+    };
+}
+
+constraint ac_range_check_smoke_vseq::deny_cnt_threshold_c {
+  if (apply_deny_cnt_threshold_c)
+    deny_cnt_threshold inside {[8'd0:8'd25]};
+}
+
+task ac_range_check_smoke_vseq::set_logging();
+    apply_log_enable_c = 1;
+    apply_deny_cnt_threshold_c = 1;
+
+    // Randomize with constraints enabled for logging
+    `DV_CHECK_RANDOMIZE_FATAL(this)
+    // Set logging in CSRs
+    ral.log_config.log_enable.set(log_enable);
+    ral.log_config.deny_cnt_threshold.set(deny_cnt_threshold);
+    csr_update(.csr(ral.log_config));
+
+    // Disable constraints for logging
+    apply_log_enable_c = 0;
+    apply_deny_cnt_threshold_c = 0;
+endtask : set_logging
+
+task ac_range_check_smoke_vseq::check_logging();
+  uvm_reg_data_t    act_config,
+                    act_status,
+                    act_address;
+
+  csr_rd(.ptr(ral.log_config), .value(act_config));
+  csr_rd(.ptr(ral.log_status), .value(act_status));
+  csr_rd(.ptr(ral.log_address), .value(act_address));
+endtask : check_logging
