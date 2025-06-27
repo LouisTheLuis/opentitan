@@ -397,18 +397,22 @@ function void ac_range_check_predictor::update_log(tl_seq_item item, int index, 
   a_user          = item.a_user;
   racl_role       = top_racl_pkg::tlul_extract_racl_role_bits(a_user.rsvd);
   ctn_uid         = top_racl_pkg::tlul_extract_ctn_uid_bits(a_user.rsvd);
-  write_access    = (access_type == ac_range_check_env_pkg::Write);
-  execute_access  = (access_type == ac_range_check_env_pkg::Execute);
-  read_access     = (access_type == ac_range_check_env_pkg::Read);
+  write_access    = item.is_write();
+  execute_access  = !item.is_write() && item.a_user[InstrTypeMsbPos:InstrTypeLsbPos] == MuBi4True;
+  read_access     = !item.is_write() && item.a_user[InstrTypeMsbPos:InstrTypeLsbPos] != MuBi4True;
   log_address     = item.a_addr;
-  racl_write      = write_access & !racl_perm;
-  racl_read       = (read_access || execute_access) & !racl_perm;
+  racl_write      = write_access && !dut_cfg.range_racl_policy[index].write_perm;
+  racl_read       = (read_access || execute_access) && !dut_cfg.range_racl_policy[index].read_perm;
 
   `uvm_info(`gfn, $sformatf({"Range attribute: allows logging?: %0b"}, 
                   `gmv(range_attr_csr.log_denied_access)), UVM_MEDIUM)
   `uvm_info(`gfn, $sformatf({"Is clear enabled?: %0b"}, 
                   `gmv(log_config_csr.log_clear)), UVM_MEDIUM) 
-  
+  `uvm_info(`gfn, $sformatf({"What is the racl_write?: %0b"}, 
+      dut_cfg.range_racl_policy[index].write_perm), UVM_MEDIUM)
+  `uvm_info(`gfn, $sformatf({"What is the racl_read?: %0b"}, 
+      dut_cfg.range_racl_policy[index].read_perm), UVM_MEDIUM)
+
   if (`gmv(log_config_csr.log_enable)) begin
     if (`gmv(log_status_csr.deny_cnt) == 0 & 
       `gmv(range_attr_csr.log_denied_access) == MuBi4True) begin
