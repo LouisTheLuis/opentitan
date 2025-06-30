@@ -404,15 +404,6 @@ function void ac_range_check_predictor::update_log(tl_seq_item item, int index, 
   racl_write      = write_access && !dut_cfg.range_racl_policy[index].write_perm;
   racl_read       = (read_access || execute_access) && !dut_cfg.range_racl_policy[index].read_perm;
 
-  `uvm_info(`gfn, $sformatf({"Range attribute: allows logging?: %0b"}, 
-                  `gmv(range_attr_csr.log_denied_access)), UVM_MEDIUM)
-  `uvm_info(`gfn, $sformatf({"Is clear enabled?: %0b"}, 
-                  `gmv(log_config_csr.log_clear)), UVM_MEDIUM) 
-  `uvm_info(`gfn, $sformatf({"What is the racl_write?: %0b"}, 
-      dut_cfg.range_racl_policy[index].write_perm), UVM_MEDIUM)
-  `uvm_info(`gfn, $sformatf({"What is the racl_read?: %0b"}, 
-      dut_cfg.range_racl_policy[index].read_perm), UVM_MEDIUM)
-
   if (`gmv(log_config_csr.log_enable)) begin
     if (`gmv(log_status_csr.deny_cnt) == 0 & 
       `gmv(range_attr_csr.log_denied_access) == MuBi4True) begin
@@ -462,6 +453,15 @@ function void ac_range_check_predictor::update_log(tl_seq_item item, int index, 
     if (deny_cnt >= `gmv(log_config_csr.deny_cnt_threshold)) begin 
       void'(env_cfg.ral.intr_state.deny_cnt_reached.predict
           (.value(1), .kind(UVM_PREDICT_DIRECT)));
+      if (env_cfg.en_cov) begin
+        
+
+        cov.sample_intr_cg(.intr(), .intr_state(), .intr_enable(), .intr_test());
+        cov.sample_log_intr_cg(.idx(index), .ctn_uid(ctn_uid), .role(racl_role), 
+          .racl_write(racl_write), .racl_read(racl_read), .no_match(no_match), .read(read_access),
+          .write(write_access), .execute(execute_access), .log_enable(), .log_clear(), 
+          .log_dnd());
+      end
     end
   end  
 endfunction : update_log

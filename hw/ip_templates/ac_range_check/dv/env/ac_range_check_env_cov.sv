@@ -35,6 +35,18 @@ class ac_range_check_env_cov extends cip_base_env_cov #(.CFG_T(ac_range_check_en
   bit  bypass_cp;   // Bypass Mode 1 = enabled, 0 = disabled
   bit  lock_idx_cp; // Status of lock bit for an index 1 = locked,  0 = unlocked
 
+  bit  intr_cp;         // Interrupt signal 1 = raised, 0 = dropped
+  bit  intr_state_cp;   // Interrupt state 1 = raised, 0 = dropped
+  bit  intr_enable_cp;  // Interrupt enable 1 = enabled, 0 = disabled
+  bit  intr_test_cp;    // Interrupt test 1 = enabled, 0 = disabled
+
+  int  ctn_uid_cp;    // Holds source CTN UID
+  bit  racl_write_cp; // RACL write, 1 = Access permitted, 0 = Access denied
+  bit  racl_read_cp;  // RACL read, 1 = Access permitted, 0 = Access denied
+  bit  log_enable_cp; // Log enable 1 = enabled, 0 = disabled
+  bit  log_clear_cp;  // Log clear 1 = enabled, 0 = disabled
+  bit  log_denied_cp; // Log denied access 1 = enabled, 0 = disabled
+
   // Primary covergroup that verifies the operation of AC_RANGE_CHECK module.
   // There are 4 parts to the cross in this covergroup.
   // - Index that had the address match
@@ -167,7 +179,6 @@ class ac_range_check_env_cov extends cip_base_env_cov #(.CFG_T(ac_range_check_en
     coverpoint bypass_cp { bins disabled = {0}; bins enabled = {1}; }
   endgroup : bypass_cg
 
-
   covergroup range_lock_cg;
     coverpoint idx_cp
     {
@@ -179,6 +190,85 @@ class ac_range_check_env_cov extends cip_base_env_cov #(.CFG_T(ac_range_check_en
 
     idx_X_enable_X_lock : cross idx_cp, range_en_cp, lock_idx_cp;
   endgroup : range_lock_cg
+
+  covergroup intr_cg;
+    coverpoint intr_cp { bins dropped = {0}; bins raised = {1}; }
+    coverpoint intr_state_cp { bins dropped = {0}; bins raised = {1}; }
+    coverpoint intr_enable_cp { bins disabled = {0}; bins enabled = {1}; }
+    coverpoint intr_test_cp { bins disabled = {0}; bins enabled = {1}; }
+
+    intr_X_state_X_enable_X_test : cross intr_cp, intr_state_cp, intr_enable_cp, intr_test_cp;
+  endgroup : intr_cg
+
+  covergroup log_intr_cg; 
+    coverpoint idx_cp 
+    {
+      bins index[] = {[0:NUM_RANGES-1]};
+    }
+
+    coverpoint ctn_uid_cp
+    {
+      bins uid[]   = {[0:31]};
+    }
+
+    coverpoint role_cp 
+    {
+      bins role[]  = {[0:NUM_ROLES-1]}; 
+    }
+
+    coverpoint racl_write_cp { bins deny = {0}; bins permit = {1}; }
+    coverpoint racl_read_cp { bins deny = {0}; bins permit = {1}; }
+    coverpoint all_index_miss_cp { bins addr_hit_seen = {0};
+                                   bins addr_not_matched_in_any_index = {1}; }
+    coverpoint read_cp    { bins disabled = {0}; bins enabled = {1}; }
+    coverpoint write_cp   { bins disabled = {0}; bins enabled = {1}; }
+    coverpoint execute_cp { bins disabled = {0}; bins enabled = {1}; }
+    coverpoint log_enable_cp { bins disabled = {0}; bins enabled = {1}; }
+    coverpoint log_clear_cp { bins disabled = {0}; bins enabled = {1}; }
+    coverpoint log_denied_cp { bins disabled = {0}; bins enabled = {1}; }
+    
+    idx_X_ctn_uid_X_role_X_racl_write_X_racl_read_X_no_match_X_read_X_write_X_execute:
+         cross idx_cp, ctn_uid_cp, racl_write_cp, racl_read_cp, all_index_miss_cp,
+               read_cp, write_cp, execute_cp, log_enable_cp, log_clear_cp, log_denied_cp
+    {
+      // If log_clear is raised, then all the fields should be cleared.
+      illegal_bins clear_when_log_clear_is_set =
+                           binsof (log_clear_cp) intersect {1}
+                    && ( !(binsof (ctn_uid_cp) intersect {0})
+                    || !(binsof (role_cp) intersect {0})
+                    || !(binsof (racl_write_cp) intersect {0})
+                    || !(binsof (racl_read_cp) intersect {0})
+                    || !(binsof (all_index_miss_cp) intersect {0})
+                    || !(binsof (read_cp) intersect {0})
+                    || !(binsof (write_cp) intersect {0})
+                    || !(binsof (execute_cp) intersect {0}) );
+
+      // If logging is globally disabled, then all the fields should be empty.
+      illegal_bins empty_when_log_enable_is_not_set =
+                           binsof (log_enable_cp) intersect {0}
+                    && ( !(binsof (ctn_uid_cp) intersect {0})
+                    || !(binsof (role_cp) intersect {0})
+                    || !(binsof (racl_write_cp) intersect {0})
+                    || !(binsof (racl_read_cp) intersect {0})
+                    || !(binsof (all_index_miss_cp) intersect {0})
+                    || !(binsof (read_cp) intersect {0})
+                    || !(binsof (write_cp) intersect {0})
+                    || !(binsof (execute_cp) intersect {0}) );
+
+      // If the corresponding range has logging disabled, then all the fields
+      // should be empty.
+      illegal_bins empty_when_log_disabled = 
+                           binsof (log_denied_cp) intersect {0}
+                    && ( !(binsof (ctn_uid_cp) intersect {0})
+                    || !(binsof (role_cp) intersect {0})
+                    || !(binsof (racl_write_cp) intersect {0})
+                    || !(binsof (racl_read_cp) intersect {0})
+                    || !(binsof (all_index_miss_cp) intersect {0})
+                    || !(binsof (read_cp) intersect {0})
+                    || !(binsof (write_cp) intersect {0})
+                    || !(binsof (execute_cp) intersect {0}) );
+    }
+  endgroup : log_intr_cg
 
   // Standard SV/UVM methods
   extern function new(string name, uvm_component parent);
@@ -193,10 +283,14 @@ class ac_range_check_env_cov extends cip_base_env_cov #(.CFG_T(ac_range_check_en
                                       int role, bit racl_check);
 
   extern function void sample_range_cg(int idx, bit range_en);
-  extern function void sample_addr_match_cg(int idx, bit addr_hit);
+
   extern function void sample_all_index_miss_cg();
   extern function void sample_bypass_cg(bit bypass_en);
   extern function void sample_range_lock_cg(int idx, bit enable, bit lock);
+  extern function void sample_intr_cg(bit intr, bit intr_state, bit intr_enable, bit intr_test);
+  extern function void sample_log_intr_cg(int idx, int ctn_uid, int role, bit racl_write,
+                                          bit racl_read, bit no_match, bit read, bit write, 
+                                          bit execute, bit log_en, bit log_clr, bit log_dnd);
 endclass : ac_range_check_env_cov
 
 
@@ -209,6 +303,8 @@ function ac_range_check_env_cov::new(string name, uvm_component parent);
   all_index_miss_cg = new();
   bypass_cg         = new();
   range_lock_cg     = new();
+  intr_cg           = new();
+  log_intr_cg       = new();
 endfunction : new
 
 function void ac_range_check_env_cov::build_phase(uvm_phase phase);
@@ -279,3 +375,32 @@ function void ac_range_check_env_cov::sample_range_lock_cg(int idx, bit enable, 
 
   range_lock_cg.sample();
 endfunction : sample_range_lock_cg
+
+function void ac_range_check_env_cov::sample_intr_cg(bit intr, bit intr_state, bit intr_enable,
+                                                     bit intr_test);
+  this.intr_cp        = intr;
+  this.intr_state_cp  = intr_state;
+  this.intr_enable_cp = intr_enable;
+  this.intr_test_cp   = intr_test;
+  intr_cg.sample();
+endfunction : sample_intr_cg
+
+function void ac_range_check_env_cov::sample_log_intr_cg(bit idx, int ctn_uid, int role, 
+                                                         bit racl_write, bit racl_read,
+                                                         bit no_match, bit read, bit write,
+                                                         bit execute, bit log_en, bit log_clr,
+                                                         bit log_dnd);
+  this.idx_cp            = idx;
+  this.ctn_uid_cp        = ctn_uid;
+  this.role_cp           = role;
+  this.racl_write_cp     = racl_write;
+  this.racl_read_cp      = racl_read;
+  this.all_index_miss_cp = no_match;
+  this.read_cp           = read;
+  this.write_cp          = write;
+  this.execute_cp        = execute;
+  this.log_enable_cp     = log_en;
+  this.log_clear_cp      = log_clr;
+  this.log_denied_cp     = log_dnd; 
+  log_intr_cg.sample();
+endfunction : sample_log_intr_cg
