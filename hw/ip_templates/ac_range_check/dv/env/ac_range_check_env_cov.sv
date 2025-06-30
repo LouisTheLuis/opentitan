@@ -34,16 +34,13 @@ class ac_range_check_env_cov extends cip_base_env_cov #(.CFG_T(ac_range_check_en
 
   bit  bypass_cp;   // Bypass Mode 1 = enabled, 0 = disabled
   bit  lock_idx_cp; // Status of lock bit for an index 1 = locked,  0 = unlocked
-
-  bit  intr_cp;         // Interrupt signal 1 = raised, 0 = dropped
-  bit  intr_state_cp;   // Interrupt state 1 = raised, 0 = dropped
-  bit  intr_enable_cp;  // Interrupt enable 1 = enabled, 0 = disabled
-  int  deny_th_cp;      // Deny threshold
-  bit  cnt_reached_cp;  // deny_cnt >= deny_cnt_threshold? 1 = greater or equal, 0 = lesser
-
+  
   bit  log_enable_cp;   // Log enable 1 = enabled, 0 = disabled
   bit  log_denied_cp;   // Log denied access 1 = enabled, 0 = disabled
   bit  log_written_cp;  // Have the log registers been written to? 1 = written, 0 = empty
+  int  deny_th_cp;      // Deny threshold
+  bit  cnt_reached_cp;  // deny_cnt >= deny_cnt_threshold? 1 = greater or equal, 0 = lesser
+  bit  intr_state_cp;   // intr_state register 1 = greater or equal, 0 = lesser
 
   // Primary covergroup that verifies the operation of AC_RANGE_CHECK module.
   // There are 4 parts to the cross in this covergroup.
@@ -189,10 +186,10 @@ class ac_range_check_env_cov extends cip_base_env_cov #(.CFG_T(ac_range_check_en
     idx_X_enable_X_lock : cross idx_cp, range_en_cp, lock_idx_cp;
   endgroup : range_lock_cg
 
-  covergroup intr_cg;
-    coverpoint intr_cp { bins dropped = {0}; bins raised = {1}; }
-    coverpoint intr_state_cp { bins dropped = {0}; bins raised = {1}; }
-    coverpoint intr_enable_cp { bins disabled = {0}; bins enabled = {1}; }
+  covergroup log_intr_cg; 
+    coverpoint log_enable_cp { bins disabled = {0}; bins enabled = {1}; }
+    coverpoint log_denied_cp { bins disabled = {0}; bins enabled = {1}; }
+    coverpoint log_written_cp { bins empty = {0}; bins written = {1}; }
     coverpoint deny_th_cp 
     {
       bins low_range  = {[0:9]};
@@ -200,37 +197,26 @@ class ac_range_check_env_cov extends cip_base_env_cov #(.CFG_T(ac_range_check_en
       bins high_range = {[1013:1023]};   
     }
     coverpoint cnt_reached_cp { bins lesser = {0}; bins greater_or_equal = {1}; }
+    coverpoint intr_state_cp { bins lesser = {0}; bins greater_or_equal = {1}; }
 
-    intr_X_state_X_enable_X_deny_th_X_cnt_reached : 
-      cross intr_cp, intr_state_cp, intr_enable_cp, deny_th_cp, cnt_reached_cp 
-    {
-      // Interrupt should not be raised with interrupt disabled
-      illegal_bins intr_when_not_enabled =
-        intr_X_state_X_enable_X_deny_th_X_cnt_reached with 
-          ((intr_cp == 1 || intr_state_cp == 1) && intr_enable_cp == 0);
-
-      // Interrupt should not be raised with deny_cnt < deny_cnt_threshold
-      illegal_bins intr_when_cnt_not_reached =
-        intr_X_state_X_enable_X_deny_th_X_cnt_reached with 
-          ((intr_cp == 1 || intr_state_cp == 1) && cnt_reached_cp == 0);
-    } 
-  endgroup : intr_cg
-
-  covergroup log_intr_cg; 
-    coverpoint log_enable_cp { bins disabled = {0}; bins enabled = {1}; }
-    coverpoint log_denied_cp { bins disabled = {0}; bins enabled = {1}; }
-    coverpoint log_written_cp { bins empty = {0}; bins written = {1}; }
-
-    log_enable_X_log_written_X_log_denied : cross log_enable_cp, log_written_cp, log_denied_cp 
+    log_enable_X_log_written_X_log_denied_X_deny_th_X_cnt_reached_X_intr_state : 
+      cross log_enable_cp, log_written_cp, log_denied_cp, deny_th_cp, cnt_reached_cp, intr_state_cp
     {
       // If logging is globally disabled, then all the fields should be empty.
       illegal_bins empty_when_log_enable_is_not_set = 
-        log_enable_X_log_written_X_log_denied with (log_enable_cp == 0 && log_written_cp != 0);
+        log_enable_X_log_written_X_log_denied_X_deny_th_X_cnt_reached_X_intr_state 
+        with (log_enable_cp == 0 && log_written_cp != 0);
 
       // If the corresponding range has logging disabled, then all the fields
       // should be empty.
       illegal_bins empty_when_log_disabled = 
-        log_enable_X_log_written_X_log_denied with (log_denied_cp == 0 && log_written_cp != 0);
+        log_enable_X_log_written_X_log_denied_X_deny_th_X_cnt_reached_X_intr_state 
+        with (log_denied_cp == 0 && log_written_cp != 0);
+    
+      // Interrupt should not be raised if deny_cnt < deny_cnt_threshold
+      illegal_bins interrupt_when_cnt_not_reached = 
+        log_enable_X_log_written_X_log_denied_X_deny_th_X_cnt_reached_X_intr_state 
+        with (intr_state_cp == 1 && cnt_reached_cp == 0);
     }
   endgroup : log_intr_cg
 
@@ -251,9 +237,8 @@ class ac_range_check_env_cov extends cip_base_env_cov #(.CFG_T(ac_range_check_en
   extern function void sample_all_index_miss_cg();
   extern function void sample_bypass_cg(bit bypass_en);
   extern function void sample_range_lock_cg(int idx, bit enable, bit lock);
-  extern function void sample_intr_cg(bit intr, bit intr_state, bit intr_enable, int deny_th,
-                                      bit cnt_reached);
-  extern function void sample_log_intr_cg(bit log_enable, bit log_written, bit log_denied);
+  extern function void sample_log_intr_cg(bit log_enable, bit log_written, bit log_denied,
+                                          int deny_th, bit cnt_reached, bit intr_state);
 endclass : ac_range_check_env_cov
 
 
@@ -266,7 +251,6 @@ function ac_range_check_env_cov::new(string name, uvm_component parent);
   all_index_miss_cg = new();
   bypass_cg         = new();
   range_lock_cg     = new();
-  intr_cg           = new();
   log_intr_cg       = new();
 endfunction : new
 
@@ -339,20 +323,14 @@ function void ac_range_check_env_cov::sample_range_lock_cg(int idx, bit enable, 
   range_lock_cg.sample();
 endfunction : sample_range_lock_cg
 
-function void ac_range_check_env_cov::sample_intr_cg(bit intr, bit intr_state, bit intr_enable,
-                                                     int deny_th, bit cnt_reached);
-  this.intr_cp        = intr;
-  this.intr_state_cp  = intr_state;
-  this.intr_enable_cp = intr_enable;
-  this.deny_th_cp     = deny_th;
-  this.cnt_reached_cp = cnt_reached;
-  intr_cg.sample();
-endfunction : sample_intr_cg
-
 function void ac_range_check_env_cov::sample_log_intr_cg(bit log_enable, bit log_written,
-                                                         bit log_denied);  
+                                                         bit log_denied, int deny_th,
+                                                         bit cnt_reached, bit intr_state);  
   this.log_enable_cp  = log_enable;
   this.log_written_cp = log_written;
   this.log_denied_cp  = log_denied;
+  this.deny_th_cp     = deny_th;
+  this.cnt_reached_cp = cnt_reached;
+  this.intr_state_cp  = intr_state;
   log_intr_cg.sample();
 endfunction : sample_log_intr_cg
