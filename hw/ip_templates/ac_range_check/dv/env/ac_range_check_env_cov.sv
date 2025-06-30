@@ -38,14 +38,12 @@ class ac_range_check_env_cov extends cip_base_env_cov #(.CFG_T(ac_range_check_en
   bit  intr_cp;         // Interrupt signal 1 = raised, 0 = dropped
   bit  intr_state_cp;   // Interrupt state 1 = raised, 0 = dropped
   bit  intr_enable_cp;  // Interrupt enable 1 = enabled, 0 = disabled
-  bit  intr_test_cp;    // Interrupt test 1 = enabled, 0 = disabled
+  int  deny_th_cp;      // Deny threshold
+  bit  cnt_reached_cp;  // deny_cnt >= deny_cnt_threshold? 1 = greater or equal, 0 = lesser
 
-  int  ctn_uid_cp;    // Holds source CTN UID
-  bit  racl_write_cp; // RACL write, 1 = Access permitted, 0 = Access denied
-  bit  racl_read_cp;  // RACL read, 1 = Access permitted, 0 = Access denied
-  bit  log_enable_cp; // Log enable 1 = enabled, 0 = disabled
-  bit  log_clear_cp;  // Log clear 1 = enabled, 0 = disabled
-  bit  log_denied_cp; // Log denied access 1 = enabled, 0 = disabled
+  bit  log_enable_cp;   // Log enable 1 = enabled, 0 = disabled
+  bit  log_denied_cp;   // Log denied access 1 = enabled, 0 = disabled
+  bit  log_written_cp;  // Have the log registers been written to? 1 = written, 0 = empty
 
   // Primary covergroup that verifies the operation of AC_RANGE_CHECK module.
   // There are 4 parts to the cross in this covergroup.
@@ -195,81 +193,44 @@ class ac_range_check_env_cov extends cip_base_env_cov #(.CFG_T(ac_range_check_en
     coverpoint intr_cp { bins dropped = {0}; bins raised = {1}; }
     coverpoint intr_state_cp { bins dropped = {0}; bins raised = {1}; }
     coverpoint intr_enable_cp { bins disabled = {0}; bins enabled = {1}; }
-    coverpoint intr_test_cp { bins disabled = {0}; bins enabled = {1}; }
+    coverpoint deny_th_cp 
+    {
+      bins low_range  = {[0:9]};
+      bins mid_range  = {[10:1012]};
+      bins high_range = {[1013:1023]};   
+    }
+    coverpoint cnt_reached_cp { bins lesser = {0}; bins greater_or_equal = {1}; }
 
-    intr_X_state_X_enable_X_test : cross intr_cp, intr_state_cp, intr_enable_cp, intr_test_cp;
+    intr_X_state_X_enable_X_deny_th_X_cnt_reached : 
+      cross intr_cp, intr_state_cp, intr_enable_cp, deny_th_cp, cnt_reached_cp 
+    {
+      // Interrupt should not be raised with interrupt disabled
+      illegal_bins intr_when_not_enabled =
+        intr_X_state_X_enable_X_deny_th_X_cnt_reached with 
+          ((intr_cp == 1 || intr_state_cp == 1) && intr_enable_cp == 0);
+
+      // Interrupt should not be raised with deny_cnt < deny_cnt_threshold
+      illegal_bins intr_when_cnt_not_reached =
+        intr_X_state_X_enable_X_deny_th_X_cnt_reached with 
+          ((intr_cp == 1 || intr_state_cp == 1) && cnt_reached_cp == 0);
+    } 
   endgroup : intr_cg
 
   covergroup log_intr_cg; 
-    coverpoint idx_cp 
-    {
-      bins index[] = {[0:NUM_RANGES-1]};
-    }
-
-    coverpoint ctn_uid_cp
-    {
-      bins uid[]   = {[0:31]};
-    }
-
-    coverpoint role_cp 
-    {
-      bins role[]  = {[0:NUM_ROLES-1]}; 
-    }
-
-    coverpoint racl_write_cp { bins deny = {0}; bins permit = {1}; }
-    coverpoint racl_read_cp { bins deny = {0}; bins permit = {1}; }
-    coverpoint all_index_miss_cp { bins addr_hit_seen = {0};
-                                   bins addr_not_matched_in_any_index = {1}; }
-    coverpoint read_cp    { bins disabled = {0}; bins enabled = {1}; }
-    coverpoint write_cp   { bins disabled = {0}; bins enabled = {1}; }
-    coverpoint execute_cp { bins disabled = {0}; bins enabled = {1}; }
     coverpoint log_enable_cp { bins disabled = {0}; bins enabled = {1}; }
-    coverpoint log_clear_cp { bins disabled = {0}; bins enabled = {1}; }
     coverpoint log_denied_cp { bins disabled = {0}; bins enabled = {1}; }
-    
-    idx_X_ctn_uid_X_role_X_racl_write_X_racl_read_X_no_match_X_read_X_write_X_execute:
-         cross idx_cp, role_cp, ctn_uid_cp, racl_write_cp, racl_read_cp, all_index_miss_cp,
-               read_cp, write_cp, execute_cp, log_enable_cp, log_clear_cp, log_denied_cp
-    {
-      // If log_clear is raised, then all the fields should be cleared.
-      illegal_bins clear_when_log_clear_is_set = 
-        idx_X_ctn_uid_X_role_X_racl_write_X_racl_read_X_no_match_X_read_X_write_X_execute with (
-                    log_clear_cp == 1
-                    && (ctn_uid_cp != 0
-                    || role_cp != 0
-                    || racl_write_cp != 0
-                    || racl_read_cp != 0
-                    || all_index_miss_cp != 0
-                    || read_cp != 0
-                    || write_cp != 0
-                    || execute_cp != 0 ));
+    coverpoint log_written_cp { bins empty = {0}; bins written = {1}; }
 
+    log_enable_X_log_written_X_log_denied : cross log_enable_cp, log_written_cp, log_denied_cp 
+    {
       // If logging is globally disabled, then all the fields should be empty.
       illegal_bins empty_when_log_enable_is_not_set = 
-        idx_X_ctn_uid_X_role_X_racl_write_X_racl_read_X_no_match_X_read_X_write_X_execute with (
-                    log_enable_cp == 0
-                    && (ctn_uid_cp != 0
-                    || role_cp != 0
-                    || racl_write_cp != 0
-                    || racl_read_cp != 0
-                    || all_index_miss_cp != 0
-                    || read_cp != 0
-                    || write_cp != 0
-                    || execute_cp != 0 ));
+        log_enable_X_log_written_X_log_denied with (log_enable_cp == 0 && log_written_cp != 0);
 
       // If the corresponding range has logging disabled, then all the fields
       // should be empty.
       illegal_bins empty_when_log_disabled = 
-        idx_X_ctn_uid_X_role_X_racl_write_X_racl_read_X_no_match_X_read_X_write_X_execute with (
-                    log_denied_cp == 0
-                    && (ctn_uid_cp != 0
-                    || role_cp != 0
-                    || racl_write_cp != 0
-                    || racl_read_cp != 0
-                    || all_index_miss_cp != 0
-                    || read_cp != 0
-                    || write_cp != 0
-                    || execute_cp != 0 ));
+        log_enable_X_log_written_X_log_denied with (log_denied_cp == 0 && log_written_cp != 0);
     }
   endgroup : log_intr_cg
 
@@ -290,10 +251,9 @@ class ac_range_check_env_cov extends cip_base_env_cov #(.CFG_T(ac_range_check_en
   extern function void sample_all_index_miss_cg();
   extern function void sample_bypass_cg(bit bypass_en);
   extern function void sample_range_lock_cg(int idx, bit enable, bit lock);
-  extern function void sample_intr_cg(bit intr, bit intr_state, bit intr_enable, bit intr_test);
-  extern function void sample_log_intr_cg(int idx, int ctn_uid, int role, bit racl_write,
-                                          bit racl_read, bit no_match, bit read, bit write, 
-                                          bit execute, bit log_en, bit log_clr, bit log_dnd);
+  extern function void sample_intr_cg(bit intr, bit intr_state, bit intr_enable, int deny_th,
+                                      bit cnt_reached);
+  extern function void sample_log_intr_cg(bit log_enable, bit log_written, bit log_denied);
 endclass : ac_range_check_env_cov
 
 
@@ -380,30 +340,19 @@ function void ac_range_check_env_cov::sample_range_lock_cg(int idx, bit enable, 
 endfunction : sample_range_lock_cg
 
 function void ac_range_check_env_cov::sample_intr_cg(bit intr, bit intr_state, bit intr_enable,
-                                                     bit intr_test);
+                                                     int deny_th, bit cnt_reached);
   this.intr_cp        = intr;
   this.intr_state_cp  = intr_state;
   this.intr_enable_cp = intr_enable;
-  this.intr_test_cp   = intr_test;
+  this.deny_th_cp     = deny_th;
+  this.cnt_reached_cp = cnt_reached;
   intr_cg.sample();
 endfunction : sample_intr_cg
 
-function void ac_range_check_env_cov::sample_log_intr_cg(int idx, int ctn_uid, int role, 
-                                                         bit racl_write, bit racl_read,
-                                                         bit no_match, bit read, bit write,
-                                                         bit execute, bit log_en, bit log_clr,
-                                                         bit log_dnd);
-  this.idx_cp            = idx;
-  this.ctn_uid_cp        = ctn_uid;
-  this.role_cp           = role;
-  this.racl_write_cp     = racl_write;
-  this.racl_read_cp      = racl_read;
-  this.all_index_miss_cp = no_match;
-  this.read_cp           = read;
-  this.write_cp          = write;
-  this.execute_cp        = execute;
-  this.log_enable_cp     = log_en;
-  this.log_clear_cp      = log_clr;
-  this.log_denied_cp     = log_dnd; 
+function void ac_range_check_env_cov::sample_log_intr_cg(bit log_enable, bit log_written,
+                                                         bit log_denied);  
+  this.log_enable_cp  = log_enable;
+  this.log_written_cp = log_written;
+  this.log_denied_cp  = log_denied;
   log_intr_cg.sample();
 endfunction : sample_log_intr_cg

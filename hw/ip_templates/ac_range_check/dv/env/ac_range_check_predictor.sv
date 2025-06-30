@@ -454,17 +454,21 @@ function void ac_range_check_predictor::update_log(tl_seq_item item, int index, 
       void'(env_cfg.ral.intr_state.deny_cnt_reached.predict
           (.value(1), .kind(UVM_PREDICT_DIRECT)));
       if (env_cfg.en_cov) begin
-        cov.sample_intr_cg(.intr(env_cfg.intr_vif.sample()), 
-            .intr_state(`gmv(env_cfg.ral.intr_state)), 
-            .intr_enable(`gmv(env_cfg.ral.intr_enable)), 
-            .intr_test(`gmv(env_cfg.ral.intr_test)));
-        cov.sample_log_intr_cg(.idx(index), .ctn_uid(ctn_uid), .role(racl_role), 
-          .racl_write(racl_write), .racl_read(racl_read), .no_match(no_match), .read(read_access),
-          .write(write_access), .execute(execute_access), 
-          .log_en(`gmv(env_cfg.ral.log_config.log_enable)), 
-          .log_clr(`gmv(env_cfg.ral.log_config.log_clear)), 
-          .log_dnd(`gmv(range_attr_csr.log_denied_access)));
+        bit log_written = !(`gmv(env_cfg.ral.log_status) == 0 
+                          && `gmv(env_cfg.ral.log_address) == 0);
+        cov.sample_log_intr_cg(.log_enable(`gmv(env_cfg.ral.log_config.log_enable)), 
+          .log_written(log_written),
+          .log_denied(`gmv(range_attr_csr.log_denied_access)));
       end
+    end
+
+    if (env_cfg.en_cov) begin
+      bit cnt_reached = (deny_cnt >= `gmv(log_config_csr.deny_cnt_threshold));
+      cov.sample_intr_cg(.intr(env_cfg.intr_vif.sample()), 
+        .intr_state(`gmv(env_cfg.ral.intr_state)), 
+        .intr_enable(`gmv(env_cfg.ral.intr_enable)), 
+        .deny_th(deny_cnt),
+        .cnt_reached(cnt_reached));
     end
   end  
 endfunction : update_log
