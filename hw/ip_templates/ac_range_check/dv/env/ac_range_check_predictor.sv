@@ -454,13 +454,16 @@ function void ac_range_check_predictor::update_log(tl_seq_item item, int index, 
       void'(env_cfg.ral.intr_state.deny_cnt_reached.predict
           (.value(1), .kind(UVM_PREDICT_DIRECT)));
       if (env_cfg.en_cov) begin
-        
-
-        cov.sample_intr_cg(.intr(), .intr_state(), .intr_enable(), .intr_test());
+        cov.sample_intr_cg(.intr(env_cfg.intr_vif.sample()), 
+            .intr_state(`gmv(env_cfg.ral.intr_state)), 
+            .intr_enable(`gmv(env_cfg.ral.intr_enable)), 
+            .intr_test(`gmv(env_cfg.ral.intr_test)));
         cov.sample_log_intr_cg(.idx(index), .ctn_uid(ctn_uid), .role(racl_role), 
           .racl_write(racl_write), .racl_read(racl_read), .no_match(no_match), .read(read_access),
-          .write(write_access), .execute(execute_access), .log_enable(), .log_clear(), 
-          .log_dnd());
+          .write(write_access), .execute(execute_access), 
+          .log_en(`gmv(env_cfg.ral.log_config.log_enable)), 
+          .log_clr(`gmv(env_cfg.ral.log_config.log_clear)), 
+          .log_dnd(`gmv(range_attr_csr.log_denied_access)));
       end
     end
   end  

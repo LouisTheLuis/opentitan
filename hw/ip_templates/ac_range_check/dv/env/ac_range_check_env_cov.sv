@@ -228,45 +228,48 @@ class ac_range_check_env_cov extends cip_base_env_cov #(.CFG_T(ac_range_check_en
     coverpoint log_denied_cp { bins disabled = {0}; bins enabled = {1}; }
     
     idx_X_ctn_uid_X_role_X_racl_write_X_racl_read_X_no_match_X_read_X_write_X_execute:
-         cross idx_cp, ctn_uid_cp, racl_write_cp, racl_read_cp, all_index_miss_cp,
+         cross idx_cp, role_cp, ctn_uid_cp, racl_write_cp, racl_read_cp, all_index_miss_cp,
                read_cp, write_cp, execute_cp, log_enable_cp, log_clear_cp, log_denied_cp
     {
       // If log_clear is raised, then all the fields should be cleared.
-      illegal_bins clear_when_log_clear_is_set =
-                           binsof (log_clear_cp) intersect {1}
-                    && ( !(binsof (ctn_uid_cp) intersect {0})
-                    || !(binsof (role_cp) intersect {0})
-                    || !(binsof (racl_write_cp) intersect {0})
-                    || !(binsof (racl_read_cp) intersect {0})
-                    || !(binsof (all_index_miss_cp) intersect {0})
-                    || !(binsof (read_cp) intersect {0})
-                    || !(binsof (write_cp) intersect {0})
-                    || !(binsof (execute_cp) intersect {0}) );
+      illegal_bins clear_when_log_clear_is_set = 
+        idx_X_ctn_uid_X_role_X_racl_write_X_racl_read_X_no_match_X_read_X_write_X_execute with (
+                    log_clear_cp == 1
+                    && (ctn_uid_cp != 0
+                    || role_cp != 0
+                    || racl_write_cp != 0
+                    || racl_read_cp != 0
+                    || all_index_miss_cp != 0
+                    || read_cp != 0
+                    || write_cp != 0
+                    || execute_cp != 0 ));
 
       // If logging is globally disabled, then all the fields should be empty.
-      illegal_bins empty_when_log_enable_is_not_set =
-                           binsof (log_enable_cp) intersect {0}
-                    && ( !(binsof (ctn_uid_cp) intersect {0})
-                    || !(binsof (role_cp) intersect {0})
-                    || !(binsof (racl_write_cp) intersect {0})
-                    || !(binsof (racl_read_cp) intersect {0})
-                    || !(binsof (all_index_miss_cp) intersect {0})
-                    || !(binsof (read_cp) intersect {0})
-                    || !(binsof (write_cp) intersect {0})
-                    || !(binsof (execute_cp) intersect {0}) );
+      illegal_bins empty_when_log_enable_is_not_set = 
+        idx_X_ctn_uid_X_role_X_racl_write_X_racl_read_X_no_match_X_read_X_write_X_execute with (
+                    log_enable_cp == 0
+                    && (ctn_uid_cp != 0
+                    || role_cp != 0
+                    || racl_write_cp != 0
+                    || racl_read_cp != 0
+                    || all_index_miss_cp != 0
+                    || read_cp != 0
+                    || write_cp != 0
+                    || execute_cp != 0 ));
 
       // If the corresponding range has logging disabled, then all the fields
       // should be empty.
       illegal_bins empty_when_log_disabled = 
-                           binsof (log_denied_cp) intersect {0}
-                    && ( !(binsof (ctn_uid_cp) intersect {0})
-                    || !(binsof (role_cp) intersect {0})
-                    || !(binsof (racl_write_cp) intersect {0})
-                    || !(binsof (racl_read_cp) intersect {0})
-                    || !(binsof (all_index_miss_cp) intersect {0})
-                    || !(binsof (read_cp) intersect {0})
-                    || !(binsof (write_cp) intersect {0})
-                    || !(binsof (execute_cp) intersect {0}) );
+        idx_X_ctn_uid_X_role_X_racl_write_X_racl_read_X_no_match_X_read_X_write_X_execute with (
+                    log_denied_cp == 0
+                    && (ctn_uid_cp != 0
+                    || role_cp != 0
+                    || racl_write_cp != 0
+                    || racl_read_cp != 0
+                    || all_index_miss_cp != 0
+                    || read_cp != 0
+                    || write_cp != 0
+                    || execute_cp != 0 ));
     }
   endgroup : log_intr_cg
 
@@ -283,7 +286,7 @@ class ac_range_check_env_cov extends cip_base_env_cov #(.CFG_T(ac_range_check_en
                                       int role, bit racl_check);
 
   extern function void sample_range_cg(int idx, bit range_en);
-
+  extern function void sample_addr_match_cg(int idx, bit addr_hit);
   extern function void sample_all_index_miss_cg();
   extern function void sample_bypass_cg(bit bypass_en);
   extern function void sample_range_lock_cg(int idx, bit enable, bit lock);
@@ -385,7 +388,7 @@ function void ac_range_check_env_cov::sample_intr_cg(bit intr, bit intr_state, b
   intr_cg.sample();
 endfunction : sample_intr_cg
 
-function void ac_range_check_env_cov::sample_log_intr_cg(bit idx, int ctn_uid, int role, 
+function void ac_range_check_env_cov::sample_log_intr_cg(int idx, int ctn_uid, int role, 
                                                          bit racl_write, bit racl_read,
                                                          bit no_match, bit read, bit write,
                                                          bit execute, bit log_en, bit log_clr,
