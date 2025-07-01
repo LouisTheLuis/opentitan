@@ -401,8 +401,12 @@ function void ac_range_check_predictor::update_log(tl_seq_item item, int index, 
   execute_access  = !item.is_write() && item.a_user[InstrTypeMsbPos:InstrTypeLsbPos] == MuBi4True;
   read_access     = !item.is_write() && item.a_user[InstrTypeMsbPos:InstrTypeLsbPos] != MuBi4True;
   log_address     = item.a_addr;
-  racl_write      = write_access && !dut_cfg.range_racl_policy[index].write_perm;
-  racl_read       = (read_access || execute_access) && !dut_cfg.range_racl_policy[index].read_perm;
+  racl_write      = write_access && !(dut_cfg.range_racl_policy[index].write_perm[racl_role]);
+  racl_read       = (read_access || execute_access) && 
+                    !(dut_cfg.range_racl_policy[index].read_perm[racl_role]);
+
+  `uvm_info(`gfn, $sformatf({"RACL for read: %0b"}, dut_cfg.range_racl_policy[index].read_perm), UVM_MEDIUM)
+  `uvm_info(`gfn, $sformatf({"RACL for write: %0b"}, dut_cfg.range_racl_policy[index].write_perm), UVM_MEDIUM)
 
   if (`gmv(log_config_csr.log_enable)) begin
     if (`gmv(log_status_csr.deny_cnt) == 0 & 

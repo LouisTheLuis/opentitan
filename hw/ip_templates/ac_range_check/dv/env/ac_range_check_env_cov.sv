@@ -211,7 +211,7 @@ class ac_range_check_env_cov extends cip_base_env_cov #(.CFG_T(ac_range_check_en
       // should be empty.
       illegal_bins empty_when_log_disabled = 
         log_enable_X_log_written_X_log_denied_X_deny_th_X_cnt_reached_X_intr_state 
-        with (log_denied_cp == 0 && log_written_cp != 0);
+        with (log_denied_cp == 1 && log_written_cp != 0);
     
       // Interrupt should not be raised if deny_cnt < deny_cnt_threshold
       illegal_bins interrupt_when_cnt_not_reached = 
