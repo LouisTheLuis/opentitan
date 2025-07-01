@@ -465,6 +465,8 @@ function void ac_range_check_predictor::update_log(tl_seq_item item, int index, 
                                 .intr_test(`gmv(env_cfg.ral.intr_test)),
                                 .intr_en(`gmv(env_cfg.ral.intr_enable)),
                                 .intr_state(`gmv(env_cfg.ral.intr_state)));
+        cov.intr_pins_cg.sample(.intr_pin(0), 
+                                .intr_pin_value(env_cfg.intr_vif.sample()));
       end
     end
 
