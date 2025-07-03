@@ -405,9 +405,6 @@ function void ac_range_check_predictor::update_log(tl_seq_item item, int index, 
   racl_read       = (read_access || execute_access) && 
                     !(dut_cfg.range_racl_policy[index].read_perm[racl_role]);
 
-  `uvm_info(`gfn, $sformatf({"RACL for read: %0b"}, dut_cfg.range_racl_policy[index].read_perm), UVM_MEDIUM)
-  `uvm_info(`gfn, $sformatf({"RACL for write: %0b"}, dut_cfg.range_racl_policy[index].write_perm), UVM_MEDIUM)
-
   if (`gmv(log_config_csr.log_enable)) begin
     if (`gmv(log_status_csr.deny_cnt) == 0 & 
       `gmv(range_attr_csr.log_denied_access) == MuBi4True) begin
@@ -469,20 +466,22 @@ function void ac_range_check_predictor::update_log(tl_seq_item item, int index, 
                                 .intr_pin_value(env_cfg.intr_vif.sample()));
       end
     end
-
-    if (env_cfg.en_cov) begin
-      bit log_written = !(`gmv(env_cfg.ral.log_status) == 0 
-                        && `gmv(env_cfg.ral.log_address) == 0);
-      bit cnt_reached = (deny_cnt >= `gmv(log_config_csr.deny_cnt_threshold));
-      cov.sample_log_intr_cg(
-        .log_enable(`gmv(env_cfg.ral.log_config.log_enable)), 
-        .log_written(log_written),
-        .log_denied(`gmv(range_attr_csr.log_denied_access)),
-        .deny_th(`gmv(log_config_csr.deny_cnt_threshold)),
-        .cnt_reached(cnt_reached),
-        .intr_state(`gmv(env_cfg.ral.intr_state.deny_cnt_reached)));
-    end
   end  
+
+  if (env_cfg.en_cov) begin
+    bit log_written = !(`gmv(env_cfg.ral.log_status) == 0 
+                      && `gmv(env_cfg.ral.log_address) == 0);
+    bit cnt_reached = (deny_cnt >= `gmv(env_cfg.ral.log_config.deny_cnt_threshold));
+    cov.sample_log_intr_cg(
+      .log_enable(`gmv(env_cfg.ral.log_config.log_enable)), 
+      .log_written(log_written),
+      .deny_th(`gmv(env_cfg.ral.log_config.deny_cnt_threshold)),
+      .cnt_reached(cnt_reached),
+      .intr_state(`gmv(env_cfg.ral.intr_state.deny_cnt_reached)));
+    cov.sample_log_denied_access_cg(
+      .idx(index),
+      .log_denied_access(`gmv(env_cfg.ral.range_attr[index].log_denied_access)));
+  end
 endfunction : update_log
 
 function void ac_range_check_predictor::reset(string kind = "HARD");

@@ -38,10 +38,13 @@ constraint ac_range_check_smoke_vseq::num_trans_c {
   num_trans inside {[50:100]};
 }
 
-// TODO remove this temporary directed constraint
+// Enable deny_access 3/4 of the time for each range
 constraint ac_range_check_smoke_vseq::tmp_c {
   foreach (dut_cfg.range_base[i]) {
-    dut_cfg.range_attr[i].log_denied_access == 1;
+    dut_cfg.range_attr[i].log_denied_access dist {
+      0 :/ 1,
+      1 :/ 3
+    };
   }
 }
 
@@ -164,7 +167,11 @@ constraint ac_range_check_smoke_vseq::log_enable_c {
 
 constraint ac_range_check_smoke_vseq::deny_cnt_threshold_c {
   if (apply_deny_cnt_threshold_c)
-    deny_cnt_threshold inside {[8'd0:8'd25]};
+    deny_cnt_threshold dist {
+      [8'd0    : 8'd9]    :/ 2,
+      [8'd10   : 8'd244]  :/ 1,
+      [8'd245  : 8'd255]  :/ 2 
+    };
 }
 
 task ac_range_check_smoke_vseq::set_logging();

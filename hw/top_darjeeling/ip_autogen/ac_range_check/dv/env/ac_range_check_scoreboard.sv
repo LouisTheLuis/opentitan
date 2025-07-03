@@ -269,7 +269,19 @@ task ac_range_check_scoreboard::process_tl_access(tl_seq_item item,
   case (csr_name)
     // Add individual case item for each csr
     "intr_state": begin
-      // FIXME TODO MVy
+      if (tl_phase == DChanRead) begin
+        if (cfg.en_cov) begin 
+          cov.intr_cg.sample(.intr(cfg.intr_vif.sample()),                                        
+                             .intr_en(`gmv(cfg.ral.intr_enable)),                   
+                             .intr_state(`gmv(cfg.ral.intr_state)));                              
+          cov.intr_test_cg.sample(.intr(cfg.intr_vif.sample()),                                   
+                                  .intr_test(`gmv(cfg.ral.intr_test)),                            
+                                  .intr_en(`gmv(cfg.ral.intr_enable)),                            
+                                  .intr_state(`gmv(cfg.ral.intr_state)));                         
+          cov.intr_pins_cg.sample(.intr_pin(0), 
+                                  .intr_pin_value(cfg.intr_vif.sample()));
+        end
+      end
     end
     "intr_enable": begin
       // FIXME TODO MVy
